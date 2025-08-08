@@ -1,0 +1,500 @@
+# Standardized Data Formats for Spacecraft DR-MPC System
+# Defines data schemas, validation rules, and format specifications
+
+data_format_version: "2.1.0"
+last_updated: "2024-12-01"
+
+# JSON Schema Definitions for Core Data Types
+
+spacecraft_state_schema:
+  type: "object"
+  required: ["timestamp", "position", "velocity", "attitude", "angular_velocity"]
+  properties:
+    timestamp:
+      type: "number"
+      description: "Unix timestamp in seconds"
+      minimum: 0
+    position:
+      type: "array"
+      description: "3D position vector [x, y, z] in meters"
+      items:
+        type: "number"
+      minItems: 3
+      maxItems: 3
+    velocity:
+      type: "array" 
+      description: "3D velocity vector [vx, vy, vz] in m/s"
+      items:
+        type: "number"
+      minItems: 3
+      maxItems: 3
+    attitude:
+      type: "object"
+      description: "Quaternion representation [w, x, y, z]"
+      required: ["w", "x", "y", "z"]
+      properties:
+        w: {type: "number", minimum: -1, maximum: 1}
+        x: {type: "number", minimum: -1, maximum: 1}
+        y: {type: "number", minimum: -1, maximum: 1}
+        z: {type: "number", minimum: -1, maximum: 1}
+    angular_velocity:
+      type: "array"
+      description: "Angular velocity [wx, wy, wz] in rad/s"
+      items:
+        type: "number"
+      minItems: 3
+      maxItems: 3
+    mass:
+      type: "number"
+      description: "Spacecraft mass in kg"
+      minimum: 0
+
+control_command_schema:
+  type: "object"
+  required: ["timestamp", "forces", "torques"]
+  properties:
+    timestamp:
+      type: "number"
+      description: "Command timestamp in Unix seconds"
+    forces:
+      type: "array"
+      description: "Control forces [fx, fy, fz] in Newtons"
+      items:
+        type: "number"
+      minItems: 3
+      maxItems: 3
+    torques:
+      type: "array"
+      description: "Control torques [tx, ty, tz] in N⋅m"
+      items:
+        type: "number"
+      minItems: 3
+      maxItems: 3
+    thruster_commands:
+      type: "object"
+      description: "Individual thruster command values"
+      patternProperties:
+        "^thruster_[0-9]+$":
+          type: "number"
+          minimum: 0
+          maximum: 1
+    validity_duration:
+      type: "number"
+      description: "Command validity period in seconds"
+      minimum: 0
+    priority:
+      type: "integer"
+      description: "Command priority (0=lowest, 10=highest)"
+      minimum: 0
+      maximum: 10
+
+test_result_schema:
+  type: "object"
+  required: ["test_id", "timestamp", "status", "metrics"]
+  properties:
+    test_id:
+      type: "string"
+      description: "Unique test identifier"
+      pattern: "^[a-zA-Z0-9_-]+$"
+    timestamp:
+      type: "string"
+      format: "date-time"
+      description: "Test execution timestamp (ISO 8601)"
+    status:
+      type: "string"
+      enum: ["PASSED", "FAILED", "WARNING", "SKIPPED"]
+      description: "Test execution status"
+    metrics:
+      type: "object"
+      description: "Test performance metrics"
+      properties:
+        execution_time:
+          type: "number"
+          minimum: 0
+          description: "Test execution time in seconds"
+        success_rate:
+          type: "number"
+          minimum: 0
+          maximum: 1
+          description: "Success rate as decimal (0-1)"
+        error_rate:
+          type: "number"
+          minimum: 0
+          maximum: 1
+          description: "Error rate as decimal (0-1)"
+    details:
+      type: "object"
+      description: "Additional test details and results"
+
+performance_metric_schema:
+  type: "object"
+  required: ["metric_name", "value", "unit", "timestamp"]
+  properties:
+    metric_name:
+      type: "string"
+      description: "Performance metric identifier"
+      examples: ["control_frequency", "position_accuracy", "memory_usage"]
+    value:
+      type: ["number", "string"]
+      description: "Metric value (numeric or string)"
+    unit:
+      type: "string"
+      description: "Measurement unit"
+      examples: ["Hz", "meters", "seconds", "MB", "percent"]
+    timestamp:
+      type: "string"
+      format: "date-time"
+      description: "Measurement timestamp"
+    confidence_interval:
+      type: "object"
+      description: "Statistical confidence interval"
+      properties:
+        lower_bound: {type: "number"}
+        upper_bound: {type: "number"}
+        confidence_level: {type: "number", minimum: 0, maximum: 1}
+
+# Standard File Formats and Naming Conventions
+
+file_naming_conventions:
+  test_results: "test_results_YYYYMMDD_HHMMSS.json"
+  performance_data: "performance_YYYYMMDD.csv"
+  system_logs: "system_YYYYMMDD.log" 
+  configuration: "config_ENV_VERSION.yaml"
+  mission_plans: "mission_MISSION_ID.json"
+  telemetry: "telemetry_SPACECRAFT_ID_YYYYMMDD.csv"
+
+csv_format_specifications:
+  performance_data:
+    description: "Performance metrics in CSV format"
+    columns:
+      - name: "timestamp"
+        type: "datetime"
+        format: "ISO 8601"
+        required: true
+      - name: "metric_name" 
+        type: "string"
+        required: true
+      - name: "value"
+        type: "numeric"
+        required: true
+      - name: "unit"
+        type: "string"
+        required: true
+      - name: "spacecraft_id"
+        type: "string"
+        required: false
+    delimiter: ","
+    header: true
+    encoding: "utf-8"
+
+  telemetry_data:
+    description: "Real-time telemetry data"
+    columns:
+      - name: "timestamp"
+        type: "datetime"
+        format: "Unix timestamp"
+        required: true
+      - name: "spacecraft_id"
+        type: "string" 
+        required: true
+      - name: "position_x"
+        type: "numeric"
+        unit: "meters"
+        required: true
+      - name: "position_y"
+        type: "numeric"
+        unit: "meters"
+        required: true
+      - name: "position_z"
+        type: "numeric"
+        unit: "meters"
+        required: true
+      - name: "velocity_x"
+        type: "numeric"
+        unit: "m/s"
+        required: true
+      - name: "velocity_y"
+        type: "numeric"
+        unit: "m/s"
+        required: true
+      - name: "velocity_z"
+        type: "numeric"
+        unit: "m/s"
+        required: true
+    delimiter: ","
+    header: true
+    encoding: "utf-8"
+
+yaml_configuration_format:
+  description: "Standard YAML configuration format"
+  required_sections: ["mission", "controller", "safety", "communication"]
+  optional_sections: ["logging", "monitoring", "visualization"]
+  
+  section_schemas:
+    mission:
+      required: ["type", "duration"]
+      properties:
+        type:
+          type: "string"
+          enum: ["single_spacecraft", "formation_flying", "docking", "station_keeping"]
+        duration:
+          type: "number"
+          minimum: 0
+          unit: "seconds"
+        spacecraft_ids:
+          type: "array"
+          items:
+            type: "string"
+    
+    controller:
+      required: ["type", "horizon_length", "control_frequency"]
+      properties:
+        type:
+          type: "string"
+          enum: ["dr_mpc", "mpc", "pid"]
+        horizon_length:
+          type: "integer"
+          minimum: 5
+          maximum: 50
+        control_frequency:
+          type: "number"
+          minimum: 1
+          maximum: 1000
+          unit: "Hz"
+        uncertainty_level:
+          type: "number"
+          minimum: 0
+          maximum: 1
+    
+    safety:
+      required: ["collision_radius"]
+      properties:
+        collision_radius:
+          type: "number"
+          minimum: 1
+          unit: "meters"
+        emergency_stop_enabled:
+          type: "boolean"
+          default: true
+        fault_tolerance:
+          type: "string"
+          enum: ["strict", "standard", "relaxed"]
+
+# Data Quality Standards
+
+data_quality_requirements:
+  completeness:
+    description: "Required data completeness thresholds"
+    thresholds:
+      critical_data: 100.0  # No missing critical data allowed
+      performance_metrics: 95.0  # 95% completeness required
+      telemetry_data: 99.0  # 99% completeness required
+      log_data: 90.0  # 90% completeness acceptable
+  
+  accuracy:
+    description: "Data accuracy requirements"
+    position_data:
+      tolerance: 0.01  # 1cm accuracy required
+      units: "meters"
+    timing_data:
+      tolerance: 0.001  # 1ms accuracy required
+      units: "seconds"
+    sensor_data:
+      tolerance: 0.05  # 5% accuracy required
+      units: "percent"
+  
+  freshness:
+    description: "Data freshness requirements"
+    real_time_data:
+      max_age: 1.0  # Max 1 second old
+      units: "seconds"
+    performance_data:
+      max_age: 300.0  # Max 5 minutes old
+      units: "seconds"
+    configuration_data:
+      max_age: 3600.0  # Max 1 hour old
+      units: "seconds"
+
+# Data Validation Rules
+
+validation_rules:
+  range_checks:
+    position:
+      min: [-10000, -10000, -10000]  # Reasonable orbital bounds
+      max: [10000, 10000, 10000]
+      units: "meters"
+    velocity:
+      min: [-100, -100, -100]  # Reasonable velocity bounds
+      max: [100, 100, 100]
+      units: "m/s"
+    control_frequency:
+      min: 1
+      max: 1000
+      units: "Hz"
+  
+  consistency_checks:
+    - description: "Timestamp monotonicity"
+      rule: "timestamps must be increasing"
+      scope: "time_series_data"
+    - description: "Unit consistency"
+      rule: "units must match schema specification"
+      scope: "all_numeric_data"
+    - description: "ID uniqueness"
+      rule: "spacecraft IDs must be unique within mission"
+      scope: "mission_configuration"
+  
+  referential_integrity:
+    - description: "Spacecraft reference validity"
+      rule: "all spacecraft references must exist in configuration"
+      scope: "telemetry_and_commands"
+    - description: "Test reference validity"
+      rule: "test results must reference valid test definitions"
+      scope: "test_data"
+
+# Export and Import Formats
+
+supported_export_formats:
+  json:
+    description: "Primary structured data format"
+    mime_type: "application/json"
+    file_extension: ".json"
+    features: ["nested_structures", "arrays", "null_values"]
+    use_cases: ["api_responses", "configuration", "test_results"]
+  
+  csv:
+    description: "Tabular data format"
+    mime_type: "text/csv"
+    file_extension: ".csv"
+    features: ["tabular_data", "wide_compatibility"]
+    use_cases: ["time_series", "performance_metrics", "analysis"]
+  
+  yaml:
+    description: "Human-readable configuration format"
+    mime_type: "text/yaml"
+    file_extension: ".yaml"
+    features: ["human_readable", "comments", "multi_document"]
+    use_cases: ["configuration", "documentation", "schemas"]
+  
+  parquet:
+    description: "High-performance columnar format"
+    mime_type: "application/octet-stream"
+    file_extension: ".parquet"
+    features: ["compression", "columnar", "fast_queries"]
+    use_cases: ["large_datasets", "analytics", "archival"]
+
+# Data Archive and Retention Policies
+
+retention_policies:
+  real_time_data:
+    retention_period: "30 days"
+    archive_after: "7 days"
+    compression: "gzip"
+  
+  test_results:
+    retention_period: "2 years"
+    archive_after: "90 days"
+    compression: "bzip2"
+  
+  performance_metrics:
+    retention_period: "1 year"
+    archive_after: "30 days"
+    compression: "gzip"
+  
+  log_files:
+    retention_period: "6 months"
+    archive_after: "30 days"
+    compression: "gzip"
+  
+  configuration_history:
+    retention_period: "indefinite"
+    archive_after: "1 year"
+    compression: "none"
+
+# Integration Standards
+
+api_data_formats:
+  request_format:
+    content_type: "application/json"
+    encoding: "utf-8"
+    max_size: "10MB"
+    compression: ["gzip", "deflate"]
+  
+  response_format:
+    content_type: "application/json"
+    encoding: "utf-8"
+    status_codes: [200, 400, 401, 403, 404, 500]
+    error_format:
+      type: "object"
+      required: ["error", "message", "timestamp"]
+      properties:
+        error:
+          type: "string"
+          description: "Error code"
+        message:
+          type: "string"
+          description: "Human-readable error message"
+        timestamp:
+          type: "string"
+          format: "date-time"
+        details:
+          type: "object"
+          description: "Additional error context"
+
+database_schemas:
+  postgresql:
+    tables:
+      spacecraft_states:
+        columns:
+          - name: "id"
+            type: "BIGSERIAL PRIMARY KEY"
+          - name: "spacecraft_id"
+            type: "VARCHAR(50) NOT NULL"
+          - name: "timestamp"
+            type: "TIMESTAMP WITH TIME ZONE NOT NULL"
+          - name: "position"
+            type: "POINT NOT NULL"
+          - name: "velocity"
+            type: "POINT NOT NULL"
+          - name: "attitude"
+            type: "JSONB NOT NULL"
+        indexes:
+          - "CREATE INDEX idx_spacecraft_timestamp ON spacecraft_states(spacecraft_id, timestamp)"
+          - "CREATE INDEX idx_position_gist ON spacecraft_states USING GIST(position)"
+      
+      test_results:
+        columns:
+          - name: "id"
+            type: "UUID PRIMARY KEY DEFAULT gen_random_uuid()"
+          - name: "test_id"
+            type: "VARCHAR(100) NOT NULL"
+          - name: "timestamp"
+            type: "TIMESTAMP WITH TIME ZONE NOT NULL"
+          - name: "status"
+            type: "test_status_enum NOT NULL"
+          - name: "metrics"
+            type: "JSONB"
+          - name: "details"
+            type: "JSONB"
+        indexes:
+          - "CREATE INDEX idx_test_timestamp ON test_results(timestamp DESC)"
+          - "CREATE INDEX idx_test_status ON test_results(status)"
+
+# Compliance and Standards
+
+compliance_standards:
+  aerospace_standards:
+    - "NASA-STD-8739.8: Software Assurance and Software Safety"
+    - "ESA PSS-05-0: Software Engineering Standards"
+    - "DO-178C: Software Considerations in Airborne Systems"
+    - "ISO 14155: Clinical investigation of medical devices"
+  
+  data_standards:
+    - "ISO 8601: Date and time representation"
+    - "RFC 4122: UUID specification"
+    - "IEEE 754: Floating-point arithmetic"
+    - "UTF-8: Character encoding standard"
+  
+  security_standards:
+    - "NIST Cybersecurity Framework"
+    - "ISO 27001: Information Security Management"
+    - "Common Criteria: Security evaluation criteria"

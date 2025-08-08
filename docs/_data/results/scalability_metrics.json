@@ -1,0 +1,74 @@
+[
+  {
+    "fleet_size": 1,
+    "execution_time": 0.1,
+    "memory_mb": 50,
+    "control_hz": 100,
+    "cpu_utilization": 0.15,
+    "communication_overhead": 0,
+    "coordination_success": 1.0
+  },
+  {
+    "fleet_size": 5,
+    "execution_time": 0.3,
+    "memory_mb": 80,
+    "control_hz": 95,
+    "cpu_utilization": 0.28,
+    "communication_overhead": 25,
+    "coordination_success": 0.98
+  },
+  {
+    "fleet_size": 10,
+    "execution_time": 0.8,
+    "memory_mb": 120,
+    "control_hz": 85,
+    "cpu_utilization": 0.42,
+    "communication_overhead": 90,
+    "coordination_success": 0.96
+  },
+  {
+    "fleet_size": 20,
+    "execution_time": 2.1,
+    "memory_mb": 200,
+    "control_hz": 70,
+    "cpu_utilization": 0.58,
+    "communication_overhead": 380,
+    "coordination_success": 0.94
+  },
+  {
+    "fleet_size": 30,
+    "execution_time": 4.5,
+    "memory_mb": 280,
+    "control_hz": 60,
+    "cpu_utilization": 0.72,
+    "communication_overhead": 870,
+    "coordination_success": 0.92
+  },
+  {
+    "fleet_size": 50,
+    "execution_time": 8.5,
+    "memory_mb": 450,
+    "control_hz": 45,
+    "cpu_utilization": 0.88,
+    "communication_overhead": 2450,
+    "coordination_success": 0.89
+  },
+  {
+    "fleet_size": 75,
+    "execution_time": 15.2,
+    "memory_mb": 680,
+    "control_hz": 35,
+    "cpu_utilization": 0.94,
+    "communication_overhead": 5550,
+    "coordination_success": 0.85
+  },
+  {
+    "fleet_size": 100,
+    "execution_time": 25.8,
+    "memory_mb": 920,
+    "control_hz": 25,
+    "cpu_utilization": 0.98,
+    "communication_overhead": 9900,
+    "coordination_success": 0.82
+  }
+]

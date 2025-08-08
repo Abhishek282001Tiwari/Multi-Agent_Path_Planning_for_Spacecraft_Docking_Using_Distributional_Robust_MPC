@@ -1,0 +1,35 @@
+- fleet_size: 1
+  execution_time: 0.1
+  memory_mb: 50
+  control_hz: 100
+  cpu_utilization: 0.15
+
+- fleet_size: 5
+  execution_time: 0.3
+  memory_mb: 80
+  control_hz: 95
+  cpu_utilization: 0.28
+
+- fleet_size: 10
+  execution_time: 0.8
+  memory_mb: 120
+  control_hz: 85
+  cpu_utilization: 0.42
+
+- fleet_size: 20
+  execution_time: 2.1
+  memory_mb: 200
+  control_hz: 70
+  cpu_utilization: 0.58
+
+- fleet_size: 30
+  execution_time: 4.5
+  memory_mb: 280
+  control_hz: 60
+  cpu_utilization: 0.72
+
+- fleet_size: 50
+  execution_time: 8.5
+  memory_mb: 450
+  control_hz: 45
+  cpu_utilization: 0.88

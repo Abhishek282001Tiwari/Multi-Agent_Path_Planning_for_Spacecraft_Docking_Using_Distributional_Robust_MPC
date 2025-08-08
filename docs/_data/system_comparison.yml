@@ -1,0 +1,19 @@
+performance_comparison:
+- autonomy: Fully Autonomous
+  control_frequency: 100 Hz
+  grade: A+
+  max_spacecraft: 50
+  position_accuracy: 0.1 m
+  system: Spacecraft DR-MPC System
+- autonomy: Semi-autonomous
+  control_frequency: 10 Hz
+  grade: B
+  max_spacecraft: 10
+  position_accuracy: 0.5 m
+  system: Traditional MPC
+- autonomy: Manual Override
+  control_frequency: 5 Hz
+  grade: C
+  max_spacecraft: 5
+  position_accuracy: 1.0 m
+  system: PID Control

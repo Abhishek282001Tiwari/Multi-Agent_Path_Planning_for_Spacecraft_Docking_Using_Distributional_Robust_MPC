@@ -1,0 +1,29 @@
+- scenario: "Station Keeping"
+  position_error_cm: 5
+  attitude_error_deg: 0.2
+  success_rate: 98.5
+  fuel_efficiency: 92
+
+- scenario: "Precision Docking"
+  position_error_cm: 3
+  attitude_error_deg: 0.1
+  success_rate: 98.5
+  fuel_efficiency: 88
+
+- scenario: "Formation Flying"
+  position_error_cm: 10
+  attitude_error_deg: 0.5
+  success_rate: 96.2
+  fuel_efficiency: 90
+
+- scenario: "Collision Avoidance"
+  position_error_cm: 8
+  attitude_error_deg: 0.3
+  success_rate: 98.5
+  fuel_efficiency: 85
+
+- scenario: "Emergency Maneuvers"
+  position_error_cm: 12
+  attitude_error_deg: 0.8
+  success_rate: 94.8
+  fuel_efficiency: 78

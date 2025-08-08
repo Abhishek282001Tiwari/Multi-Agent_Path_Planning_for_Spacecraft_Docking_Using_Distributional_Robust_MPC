@@ -1,0 +1,420 @@
+# Production Configuration Template for Spacecraft DR-MPC System
+# Version: 2.1.0
+# Date: 2024-12-01
+# Environment: Production
+
+# Mission Configuration
+mission:
+  # Mission identification
+  id: "MISSION_001"
+  name: "Multi-Spacecraft Formation Flying"
+  description: "Autonomous formation flying with DR-MPC control"
+  
+  # Mission type and parameters
+  type: "formation_flying"  # Options: single_spacecraft, formation_flying, docking, station_keeping
+  duration: 7200  # Mission duration in seconds (2 hours)
+  start_time: "auto"  # ISO 8601 timestamp or "auto" for immediate start
+  
+  # Spacecraft configuration
+  spacecraft:
+    count: 4
+    formation_type: "diamond"  # Options: line, v_formation, diamond, custom
+    formation_parameters:
+      separation: 50.0  # meters
+      altitude: 400000  # meters (400 km)
+      inclination: 51.6  # degrees (ISS-like orbit)
+  
+  # Mission phases
+  phases:
+    - name: "initialization"
+      duration: 300  # 5 minutes
+      objectives: ["system_check", "communication_establish"]
+    - name: "formation_establishment"
+      duration: 900  # 15 minutes
+      objectives: ["achieve_formation", "validate_coordination"]
+    - name: "steady_state_operations"
+      duration: 5400  # 90 minutes
+      objectives: ["maintain_formation", "execute_maneuvers"]
+    - name: "mission_conclusion"
+      duration: 600  # 10 minutes
+      objectives: ["safe_separation", "data_downlink"]
+
+# Controller Configuration
+controller:
+  # Primary controller type
+  type: "dr_mpc"  # Options: dr_mpc, mpc, pid, hybrid
+  
+  # DR-MPC specific parameters
+  dr_mpc:
+    horizon_length: 15  # Control horizon steps
+    prediction_horizon: 20  # Prediction horizon steps
+    control_frequency: 100.0  # Hz
+    solver_tolerance: 1e-6
+    max_solver_iterations: 100
+    
+    # Uncertainty modeling
+    uncertainty_level: 0.2  # 20% model uncertainty
+    wasserstein_radius: 0.15
+    robustness_margin: 0.1
+    
+    # Cost function weights
+    weights:
+      position: [1.0, 1.0, 1.0]  # Position tracking weights
+      velocity: [0.5, 0.5, 0.5]  # Velocity tracking weights
+      attitude: [0.8, 0.8, 0.8]  # Attitude tracking weights
+      control: [0.1, 0.1, 0.1]  # Control effort weights
+      terminal: 10.0  # Terminal cost weight
+  
+  # Constraints
+  constraints:
+    position:
+      min: [-1000, -1000, -1000]  # meters
+      max: [1000, 1000, 1000]   # meters
+    velocity:
+      min: [-10, -10, -10]  # m/s
+      max: [10, 10, 10]     # m/s
+    control_force:
+      min: [-100, -100, -100]  # Newtons
+      max: [100, 100, 100]     # Newtons
+    control_torque:
+      min: [-10, -10, -10]  # N⋅m
+      max: [10, 10, 10]     # N⋅m
+  
+  # Performance requirements
+  performance:
+    position_accuracy: 0.1  # meters RMS
+    attitude_accuracy: 0.5  # degrees RMS
+    settling_time: 30.0     # seconds
+    steady_state_error: 0.02  # meters
+
+# Multi-Agent Coordination
+coordination:
+  # Coordination algorithm
+  algorithm: "distributed_consensus"  # Options: centralized, distributed_consensus, hierarchical
+  
+  # Communication topology
+  topology: "fully_connected"  # Options: fully_connected, ring, star, mesh
+  
+  # Consensus parameters
+  consensus:
+    convergence_tolerance: 0.01
+    max_iterations: 50
+    update_rate: 50.0  # Hz
+    
+  # Formation control
+  formation:
+    leader_selection: "dynamic"  # Options: static, dynamic, rotating
+    formation_tolerance: 2.0  # meters
+    reconfiguration_time: 60.0  # seconds
+    collision_avoidance_distance: 15.0  # meters
+
+# Safety System Configuration
+safety:
+  # Collision avoidance
+  collision_avoidance:
+    enabled: true
+    safety_radius: 10.0  # meters minimum separation
+    warning_radius: 25.0  # meters early warning
+    emergency_radius: 5.0  # meters emergency action
+    response_time: 0.2  # seconds maximum response time
+    
+  # Emergency procedures
+  emergency:
+    auto_stop_enabled: true
+    safe_mode_enabled: true
+    emergency_maneuvers: ["stop", "retreat", "orbit_change"]
+    
+  # Fault tolerance
+  fault_tolerance:
+    detection_threshold: 3.0  # sigma for fault detection
+    isolation_time: 5.0  # seconds to isolate faults
+    recovery_timeout: 30.0  # seconds maximum recovery time
+    redundancy_level: "dual"  # Options: none, dual, triple
+    
+  # Operational limits
+  limits:
+    max_acceleration: 2.0  # m/s²
+    max_angular_velocity: 0.5  # rad/s
+    max_operational_distance: 5000.0  # meters from reference
+    min_fuel_reserve: 0.15  # 15% minimum fuel reserve
+
+# Communication System
+communication:
+  # Network configuration
+  network:
+    protocol: "secure_udp"  # Options: tcp, udp, secure_tcp, secure_udp
+    port: 8443
+    broadcast_port: 8444
+    multicast_group: "239.1.2.3"
+    
+  # Message formatting
+  message_format: "protobuf"  # Options: json, protobuf, msgpack
+  compression: "gzip"  # Options: none, gzip, lz4
+  max_message_size: 65536  # bytes
+  
+  # Timing and reliability
+  timing:
+    heartbeat_interval: 100  # milliseconds
+    timeout: 1000  # milliseconds
+    retry_attempts: 3
+    retry_delay: 100  # milliseconds
+    
+  # Quality of service
+  qos:
+    priority_levels: 4
+    bandwidth_limit: 10.0  # Mbps per spacecraft
+    latency_requirement: 10  # milliseconds maximum
+    packet_loss_tolerance: 0.001  # 0.1% maximum loss
+
+# Security Configuration
+security:
+  # Encryption settings
+  encryption:
+    algorithm: "AES-256-GCM"
+    key_size: 256  # bits
+    key_rotation_interval: 3600  # seconds (1 hour)
+    
+  # Key exchange
+  key_exchange:
+    algorithm: "RSA-2048"
+    certificate_authority: "spacecraft_ca"
+    certificate_validity: 31536000  # seconds (1 year)
+    
+  # Authentication
+  authentication:
+    method: "mutual_tls"  # Options: none, psk, certificate, mutual_tls
+    session_timeout: 1800  # seconds (30 minutes)
+    
+  # Access control
+  access_control:
+    role_based: true
+    default_permissions: ["read_telemetry", "send_commands"]
+    admin_permissions: ["all"]
+    
+  # Security monitoring
+  monitoring:
+    intrusion_detection: true
+    security_logging: true
+    anomaly_detection: true
+    alert_threshold: "medium"
+
+# Logging Configuration
+logging:
+  # Log levels and destinations
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "structured"  # Options: text, structured, json
+  
+  # Log outputs
+  outputs:
+    console:
+      enabled: true
+      level: "INFO"
+      format: "text"
+    file:
+      enabled: true
+      level: "DEBUG"
+      path: "/var/log/spacecraft-drmpc/"
+      rotation_size: "100MB"
+      rotation_count: 10
+    syslog:
+      enabled: false
+      facility: "local0"
+      level: "WARNING"
+    remote:
+      enabled: false
+      endpoint: "https://logs.example.com/api/v1/logs"
+      api_key: "${LOG_API_KEY}"
+  
+  # Log retention
+  retention:
+    days: 30
+    archive_after_days: 7
+    compression: "gzip"
+
+# Monitoring and Telemetry
+monitoring:
+  # System monitoring
+  system:
+    enabled: true
+    interval: 10  # seconds
+    metrics: ["cpu", "memory", "disk", "network", "temperature"]
+    
+  # Performance monitoring
+  performance:
+    enabled: true
+    interval: 1  # seconds
+    metrics: ["control_loop_time", "solver_time", "communication_latency"]
+    
+  # Health checks
+  health_checks:
+    enabled: true
+    interval: 30  # seconds
+    endpoints:
+      - url: "http://localhost:8080/health"
+        timeout: 5
+        expected_status: 200
+      - url: "http://localhost:8080/ready"
+        timeout: 3
+        expected_status: 200
+  
+  # Alerting
+  alerts:
+    enabled: true
+    channels: ["email", "slack", "webhook"]
+    thresholds:
+      cpu_usage: 85  # percent
+      memory_usage: 90  # percent
+      disk_usage: 90  # percent
+      response_time: 1000  # milliseconds
+  
+  # Data collection
+  telemetry:
+    collection_rate: 100  # Hz
+    transmission_rate: 10  # Hz
+    buffer_size: 1000  # samples
+    compression: true
+
+# Data Management
+data:
+  # Storage configuration
+  storage:
+    type: "postgresql"  # Options: postgresql, mongodb, influxdb, file
+    connection_string: "${DATABASE_URL}"
+    pool_size: 10
+    timeout: 30  # seconds
+    
+  # Data retention
+  retention:
+    real_time_data: 86400  # seconds (1 day)
+    historical_data: 2592000  # seconds (30 days)
+    log_data: 604800  # seconds (7 days)
+    test_results: 31536000  # seconds (1 year)
+  
+  # Backup configuration
+  backup:
+    enabled: true
+    interval: 3600  # seconds (1 hour)
+    retention: 168  # hours (1 week)
+    compression: true
+    encryption: true
+    destination: "/backup/spacecraft-drmpc/"
+  
+  # Export formats
+  export:
+    formats: ["json", "csv", "parquet"]
+    default_format: "json"
+    compression: "gzip"
+
+# Visualization and UI
+visualization:
+  # Web interface
+  web_ui:
+    enabled: true
+    port: 8080
+    host: "0.0.0.0"
+    ssl_enabled: false
+    
+  # Real-time plotting
+  plotting:
+    enabled: true
+    update_rate: 10  # Hz
+    plot_types: ["trajectory", "formation", "performance"]
+    export_formats: ["png", "svg", "pdf"]
+    
+  # Dashboard
+  dashboard:
+    enabled: true
+    refresh_rate: 5  # seconds
+    widgets: ["system_status", "mission_progress", "performance_metrics"]
+
+# Integration Configuration
+integration:
+  # External systems
+  ground_station:
+    enabled: true
+    endpoint: "https://ground.example.com/api"
+    api_key: "${GROUND_STATION_API_KEY}"
+    update_interval: 60  # seconds
+    
+  # Simulation interface
+  simulation:
+    enabled: false
+    type: "gazebo"  # Options: gazebo, matlab, custom
+    connection: "tcp://localhost:11345"
+    
+  # Hardware interfaces
+  hardware:
+    enabled: false
+    interfaces: ["can_bus", "serial", "ethernet"]
+    
+# Environment-Specific Overrides
+environment:
+  name: "production"
+  deployment_target: "kubernetes"  # Options: local, docker, kubernetes, aws, gcp
+  
+  # Resource limits
+  resources:
+    cpu_limit: "2000m"  # 2 CPU cores
+    memory_limit: "4Gi"  # 4 GB RAM
+    disk_limit: "20Gi"  # 20 GB storage
+    
+  # Scaling configuration
+  scaling:
+    min_replicas: 1
+    max_replicas: 10
+    target_cpu_utilization: 70  # percent
+    
+  # Health and readiness probes
+  probes:
+    liveness:
+      path: "/health"
+      initial_delay: 30
+      period: 10
+      timeout: 5
+      failure_threshold: 3
+    readiness:
+      path: "/ready"
+      initial_delay: 5
+      period: 5
+      timeout: 3
+      failure_threshold: 3
+
+# Feature Flags
+features:
+  # Experimental features
+  experimental:
+    adaptive_control: false
+    machine_learning: false
+    quantum_optimization: false
+    
+  # Optional features
+  optional:
+    advanced_visualization: true
+    real_time_optimization: true
+    predictive_maintenance: true
+    
+  # Debug features
+  debug:
+    verbose_logging: false
+    performance_profiling: false
+    memory_debugging: false
+
+# Validation and Testing
+validation:
+  # Pre-flight checks
+  preflight:
+    enabled: true
+    checks: ["configuration", "connectivity", "resources", "security"]
+    timeout: 300  # seconds
+    
+  # Continuous testing
+  testing:
+    enabled: true
+    test_suites: ["unit", "integration", "performance", "security"]
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    
+  # Performance benchmarks
+  benchmarks:
+    enabled: true
+    baseline_file: "benchmarks/production_baseline.json"
+    tolerance: 0.1  # 10% performance degradation tolerance

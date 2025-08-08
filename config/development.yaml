@@ -1,0 +1,110 @@
+# Development Configuration for Spacecraft DR-MPC System
+# Optimized for development and testing environments
+
+# Mission Configuration
+mission:
+  id: "DEV_TEST_001"
+  name: "Development Testing Mission"
+  description: "Development environment testing configuration"
+  type: "formation_flying"
+  duration: 600  # 10 minutes for quick testing
+  spacecraft:
+    count: 2  # Reduced for development
+    formation_type: "line"
+    formation_parameters:
+      separation: 20.0  # meters - closer for easier visualization
+
+# Controller Configuration - Relaxed for development
+controller:
+  type: "dr_mpc"
+  dr_mpc:
+    horizon_length: 10  # Reduced for faster computation
+    control_frequency: 50.0  # Hz - reduced for development
+    uncertainty_level: 0.1  # Lower uncertainty for stability
+    solver_tolerance: 1e-4  # Relaxed tolerance
+    weights:
+      position: [1.0, 1.0, 1.0]
+      velocity: [0.3, 0.3, 0.3]
+      control: [0.05, 0.05, 0.05]
+
+# Safety Configuration - More permissive for testing
+safety:
+  collision_avoidance:
+    enabled: true
+    safety_radius: 15.0  # meters - increased for safety margin
+    warning_radius: 30.0
+  fault_tolerance:
+    detection_threshold: 2.0  # Less sensitive
+    recovery_timeout: 60.0  # More time for debugging
+
+# Communication - Local development settings
+communication:
+  network:
+    protocol: "udp"
+    port: 8080
+  timing:
+    timeout: 2000  # milliseconds - more tolerant
+    retry_attempts: 5
+
+# Security - Minimal for development
+security:
+  encryption:
+    algorithm: "AES-128-GCM"  # Lighter encryption
+  authentication:
+    method: "none"  # No auth for development
+
+# Logging - Verbose for debugging
+logging:
+  level: "DEBUG"
+  outputs:
+    console:
+      enabled: true
+      level: "DEBUG"
+    file:
+      enabled: true
+      path: "./logs/"
+      level: "DEBUG"
+
+# Monitoring - Detailed for development
+monitoring:
+  system:
+    enabled: true
+    interval: 5  # seconds
+  performance:
+    enabled: true
+    interval: 1  # seconds
+  alerts:
+    enabled: false  # Disabled for development
+
+# Data Management - Simple file-based
+data:
+  storage:
+    type: "file"
+    connection_string: "./data/"
+  retention:
+    real_time_data: 3600  # 1 hour
+    historical_data: 86400  # 1 day
+
+# Visualization - Enabled for development
+visualization:
+  web_ui:
+    enabled: true
+    port: 8080
+  plotting:
+    enabled: true
+    update_rate: 5  # Hz
+  dashboard:
+    enabled: true
+
+# Development specific features
+environment:
+  name: "development"
+  deployment_target: "local"
+  
+features:
+  debug:
+    verbose_logging: true
+    performance_profiling: true
+    memory_debugging: true
+  experimental:
+    adaptive_control: true  # Enable for testing
