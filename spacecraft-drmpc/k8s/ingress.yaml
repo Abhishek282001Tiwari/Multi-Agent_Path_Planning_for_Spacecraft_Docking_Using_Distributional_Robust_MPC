@@ -1,0 +1,606 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: spacecraft-ingress
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-drmpc
+    version: v1.0.0
+    component: ingress
+  annotations:
+    # Ingress Controller Configuration
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    
+    # Rate Limiting
+    nginx.ingress.kubernetes.io/rate-limit-connections: "20"
+    nginx.ingress.kubernetes.io/rate-limit-requests: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    
+    # Timeouts and Body Size
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/client-body-buffer-size: "128k"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    
+    # Load Balancing
+    nginx.ingress.kubernetes.io/load-balance: "ewma"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
+    
+    # Security Headers
+    nginx.ingress.kubernetes.io/add-base-url: "true"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Content-Type, Authorization, X-Requested-With"
+    
+    # SSL Configuration
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    cert-manager.io/acme-challenge-type: "http01"
+    
+    # Authentication
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: spacecraft-auth
+    nginx.ingress.kubernetes.io/auth-realm: "Spacecraft Simulation Access"
+    
+    # Custom Error Pages
+    nginx.ingress.kubernetes.io/custom-http-errors: "404,503"
+    nginx.ingress.kubernetes.io/default-backend: spacecraft-error-pages
+    
+    # Monitoring
+    nginx.ingress.kubernetes.io/enable-opentelemetry: "true"
+    nginx.ingress.kubernetes.io/opentelemetry-operation-name: spacecraft_request
+    
+spec:
+  tls:
+  - hosts:
+    - spacecraft-sim.example.com
+    - api.spacecraft-sim.example.com
+    - monitor.spacecraft-sim.example.com
+    secretName: spacecraft-tls-cert
+  
+  rules:
+  - host: spacecraft-sim.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: spacecraft-drmpc
+            port:
+              number: 80
+      
+      - path: /api/v1
+        pathType: Prefix
+        backend:
+          service:
+            name: spacecraft-drmpc
+            port:
+              number: 80
+      
+      - path: /health
+        pathType: Exact
+        backend:
+          service:
+            name: spacecraft-drmpc
+            port:
+              number: 80
+      
+      - path: /metrics
+        pathType: Exact
+        backend:
+          service:
+            name: spacecraft-drmpc
+            port:
+              number: 8080
+  
+  - host: api.spacecraft-sim.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: spacecraft-drmpc
+            port:
+              number: 80
+      
+      - path: /grpc
+        pathType: Prefix
+        backend:
+          service:
+            name: spacecraft-drmpc
+            port:
+              number: 9090
+  
+  - host: monitor.spacecraft-sim.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
+      
+      - path: /prometheus
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus
+            port:
+              number: 9090
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: spacecraft-websocket-ingress
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-drmpc
+    version: v1.0.0
+    component: websocket-ingress
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    
+    # WebSocket Configuration
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/proxy-set-headers: |
+      Connection "upgrade"
+      Upgrade "$http_upgrade"
+    nginx.ingress.kubernetes.io/websocket-services: "spacecraft-websocket"
+    
+    # Session Affinity for WebSocket
+    nginx.ingress.kubernetes.io/session-cookie-name: "spacecraft-session"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
+    nginx.ingress.kubernetes.io/session-cookie-path: "/"
+    
+    # WebSocket Timeouts
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    
+spec:
+  tls:
+  - hosts:
+    - ws.spacecraft-sim.example.com
+    secretName: spacecraft-tls-cert
+  
+  rules:
+  - host: ws.spacecraft-sim.example.com
+    http:
+      paths:
+      - path: /ws
+        pathType: Prefix
+        backend:
+          service:
+            name: spacecraft-websocket
+            port:
+              number: 8080
+      
+      - path: /live
+        pathType: Prefix
+        backend:
+          service:
+            name: spacecraft-websocket
+            port:
+              number: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spacecraft-websocket
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-websocket
+    version: v1.0.0
+    component: websocket
+spec:
+  type: ClusterIP
+  ports:
+  - name: websocket
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: spacecraft-drmpc
+    component: websocket
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spacecraft-error-pages
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-error-pages
+    version: v1.0.0
+    component: error-pages
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: spacecraft-error-pages
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spacecraft-error-pages
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-error-pages
+    version: v1.0.0
+    component: error-pages
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: spacecraft-error-pages
+  template:
+    metadata:
+      labels:
+        app: spacecraft-error-pages
+        version: v1.0.0
+        component: error-pages
+    spec:
+      containers:
+      - name: error-pages
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+          name: http
+        volumeMounts:
+        - name: error-pages-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: error-pages-content
+          mountPath: /usr/share/nginx/html
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      volumes:
+      - name: error-pages-config
+        configMap:
+          name: error-pages-config
+      - name: error-pages-content
+        configMap:
+          name: error-pages-content
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: error-pages-config
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-error-pages
+    version: v1.0.0
+    component: error-pages-config
+data:
+  nginx.conf: |
+    events {
+        worker_connections 1024;
+    }
+    
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        
+        server {
+            listen 8080;
+            server_name localhost;
+            
+            error_page 404 /404.html;
+            error_page 503 /503.html;
+            error_page 500 502 504 /50x.html;
+            
+            location = /404.html {
+                root /usr/share/nginx/html;
+                internal;
+            }
+            
+            location = /503.html {
+                root /usr/share/nginx/html;
+                internal;
+            }
+            
+            location = /50x.html {
+                root /usr/share/nginx/html;
+                internal;
+            }
+            
+            location / {
+                return 404;
+            }
+        }
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: error-pages-content
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-error-pages
+    version: v1.0.0
+    component: error-pages-content
+data:
+  404.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>404 - Spacecraft Not Found</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+                color: white;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+            }
+            .container {
+                text-align: center;
+                max-width: 600px;
+                padding: 2rem;
+            }
+            .error-code {
+                font-size: 8rem;
+                font-weight: bold;
+                margin-bottom: 0;
+                text-shadow: 0 0 20px rgba(255,255,255,0.5);
+            }
+            .error-message {
+                font-size: 1.5rem;
+                margin-bottom: 2rem;
+                opacity: 0.9;
+            }
+            .spacecraft-icon {
+                font-size: 4rem;
+                margin: 2rem 0;
+            }
+            .back-link {
+                color: #ffffff;
+                text-decoration: none;
+                padding: 12px 24px;
+                background: rgba(255,255,255,0.2);
+                border-radius: 25px;
+                transition: all 0.3s ease;
+                display: inline-block;
+            }
+            .back-link:hover {
+                background: rgba(255,255,255,0.3);
+                transform: translateY(-2px);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="spacecraft-icon">🛰️</div>
+            <div class="error-code">404</div>
+            <div class="error-message">Spacecraft trajectory not found</div>
+            <p>The requested simulation endpoint has drifted into deep space.</p>
+            <a href="/" class="back-link">Return to Mission Control</a>
+        </div>
+    </body>
+    </html>
+  
+  503.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>503 - Simulation Temporarily Unavailable</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+                color: white;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+            }
+            .container {
+                text-align: center;
+                max-width: 600px;
+                padding: 2rem;
+            }
+            .error-code {
+                font-size: 8rem;
+                font-weight: bold;
+                margin-bottom: 0;
+                text-shadow: 0 0 20px rgba(255,255,255,0.5);
+            }
+            .error-message {
+                font-size: 1.5rem;
+                margin-bottom: 2rem;
+                opacity: 0.9;
+            }
+            .spacecraft-icon {
+                font-size: 4rem;
+                margin: 2rem 0;
+                animation: spin 3s linear infinite;
+            }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            .status-message {
+                margin: 2rem 0;
+                font-size: 1.1rem;
+                opacity: 0.8;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="spacecraft-icon">🔧</div>
+            <div class="error-code">503</div>
+            <div class="error-message">Simulation Systems Maintenance</div>
+            <div class="status-message">
+                <p>Our spacecraft simulation systems are currently undergoing routine maintenance.</p>
+                <p>Mission Control is working to restore full operational capacity.</p>
+                <p>Please check back in a few moments.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+  
+  50x.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>500 - Mission Control Error</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+            }
+            .container {
+                text-align: center;
+                max-width: 600px;
+                padding: 2rem;
+            }
+            .error-code {
+                font-size: 8rem;
+                font-weight: bold;
+                margin-bottom: 0;
+                text-shadow: 0 0 20px rgba(255,255,255,0.5);
+            }
+            .error-message {
+                font-size: 1.5rem;
+                margin-bottom: 2rem;
+                opacity: 0.9;
+            }
+            .spacecraft-icon {
+                font-size: 4rem;
+                margin: 2rem 0;
+            }
+            .error-details {
+                background: rgba(0,0,0,0.2);
+                padding: 1.5rem;
+                border-radius: 10px;
+                margin: 2rem 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="spacecraft-icon">⚠️</div>
+            <div class="error-code">5XX</div>
+            <div class="error-message">Mission Control System Error</div>
+            <div class="error-details">
+                <p>An unexpected error occurred in our spacecraft simulation systems.</p>
+                <p>Our engineering team has been automatically notified and is investigating.</p>
+                <p>Error ID: <code id="error-id"></code></p>
+            </div>
+        </div>
+        <script>
+            document.getElementById('error-id').textContent = 
+                'ERR-' + Date.now().toString(36).toUpperCase();
+        </script>
+    </body>
+    </html>
+
+---
+# Certificate Issuer for Let's Encrypt
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  labels:
+    app: cert-manager
+    version: v1.0.0
+    component: certificate-issuer
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@spacecraft-sim.example.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-private-key
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+      selector:
+        dnsNames:
+        - spacecraft-sim.example.com
+        - api.spacecraft-sim.example.com
+        - monitor.spacecraft-sim.example.com
+        - ws.spacecraft-sim.example.com
+
+---
+# Certificate for staging environment
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+  labels:
+    app: cert-manager
+    version: v1.0.0
+    component: certificate-issuer-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: admin@spacecraft-sim.example.com
+    privateKeySecretRef:
+      name: letsencrypt-staging-private-key
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+
+---
+# Middleware for rate limiting
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: spacecraft-rate-limit
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-drmpc
+    version: v1.0.0
+    component: rate-limiting
+spec:
+  rateLimit:
+    burst: 100
+    average: 50
+    period: 1m
+    sourceCriterion:
+      ipStrategy:
+        depth: 1

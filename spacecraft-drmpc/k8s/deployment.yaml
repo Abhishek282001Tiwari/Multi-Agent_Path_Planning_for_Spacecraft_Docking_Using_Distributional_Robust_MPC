@@ -1,0 +1,536 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spacecraft-drmpc
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-drmpc
+    version: v1.0.0
+    component: simulation
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: spacecraft-drmpc
+  template:
+    metadata:
+      labels:
+        app: spacecraft-drmpc
+        version: v1.0.0
+        component: simulation
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: spacecraft-drmpc-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+      - name: spacecraft-drmpc
+        image: spacecraft-drmpc:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: grpc
+          containerPort: 9090
+          protocol: TCP
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: PYTHONPATH
+          value: "/app"
+        - name: SIMULATION_MODE
+          value: "distributed"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: spacecraft-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: spacecraft-secrets
+              key: redis-url
+        - name: MOSEK_LICENSE_FILE
+          value: "/etc/licenses/mosek/mosek.lic"
+        envFrom:
+        - configMapRef:
+            name: spacecraft-config
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+            ephemeral-storage: "5Gi"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+            ephemeral-storage: "10Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /startup
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 30
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        - name: simulation-data
+          mountPath: /app/data
+        - name: results-storage
+          mountPath: /app/results
+        - name: licenses
+          mountPath: /etc/licenses
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        - name: shared-memory
+          mountPath: /dev/shm
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 15"]
+      - name: redis-sidecar
+        image: redis:7-alpine
+        ports:
+        - name: redis
+          containerPort: 6379
+          protocol: TCP
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        command:
+          - redis-server
+          - --appendonly
+          - "yes"
+          - --maxmemory
+          - "256mb"
+          - --maxmemory-policy
+          - "allkeys-lru"
+      volumes:
+      - name: config-volume
+        configMap:
+          name: spacecraft-config
+          defaultMode: 0644
+      - name: simulation-data
+        persistentVolumeClaim:
+          claimName: simulation-data-pvc
+      - name: results-storage
+        persistentVolumeClaim:
+          claimName: results-storage-pvc
+      - name: licenses
+        secret:
+          secretName: software-licenses
+          defaultMode: 0600
+      - name: tmp
+        emptyDir:
+          sizeLimit: "1Gi"
+      - name: shared-memory
+        emptyDir:
+          medium: Memory
+          sizeLimit: "1Gi"
+      - name: redis-data
+        emptyDir:
+          sizeLimit: "2Gi"
+      nodeSelector:
+        spacecraft.io/compute-type: "high-performance"
+      tolerations:
+      - key: "spacecraft.io/dedicated"
+        operator: "Equal"
+        value: "simulation"
+        effect: "NoSchedule"
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: "spacecraft.io/gpu-enabled"
+                operator: In
+                values: ["true"]
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values: ["spacecraft-drmpc"]
+              topologyKey: kubernetes.io/hostname
+      terminationGracePeriodSeconds: 60
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spacecraft-coordinator
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-coordinator
+    version: v1.0.0
+    component: coordination
+spec:
+  replicas: 2
+  strategy:
+    type: Recreate  # Coordination requires stable leadership
+  selector:
+    matchLabels:
+      app: spacecraft-coordinator
+  template:
+    metadata:
+      labels:
+        app: spacecraft-coordinator
+        version: v1.0.0
+        component: coordination
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: spacecraft-drmpc-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+      - name: coordinator
+        image: spacecraft-drmpc:latest
+        command: ["python3", "-m", "src.coordination.distributed_coordinator"]
+        ports:
+        - name: coordinator
+          containerPort: 8081
+          protocol: TCP
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: SERVICE_MODE
+          value: "coordinator"
+        - name: COORDINATOR_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        envFrom:
+        - configMapRef:
+            name: spacecraft-config
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: coordinator
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: coordinator
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        - name: coordination-data
+          mountPath: /app/coordination
+      volumes:
+      - name: config-volume
+        configMap:
+          name: spacecraft-config
+      - name: coordination-data
+        persistentVolumeClaim:
+          claimName: coordination-data-pvc
+      nodeSelector:
+        spacecraft.io/node-type: "coordination"
+      tolerations:
+      - key: "spacecraft.io/dedicated"
+        operator: "Equal"
+        value: "coordination"
+        effect: "NoSchedule"
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spacecraft-db-migration
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-migration
+    version: v1.0.0
+    component: migration
+spec:
+  template:
+    metadata:
+      labels:
+        app: spacecraft-migration
+        version: v1.0.0
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: spacecraft-drmpc-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+      containers:
+      - name: migration
+        image: spacecraft-drmpc:latest
+        command: ["python3", "scripts/db_migrate.py"]
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: spacecraft-secrets
+              key: database-url
+        envFrom:
+        - configMapRef:
+            name: spacecraft-config
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: config-volume
+        configMap:
+          name: spacecraft-config
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: spacecraft-cleanup
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-cleanup
+    version: v1.0.0
+    component: maintenance
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: spacecraft-cleanup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: spacecraft-drmpc-sa
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+          containers:
+          - name: cleanup
+            image: spacecraft-drmpc:latest
+            command: ["python3", "scripts/cleanup_old_data.py"]
+            env:
+            - name: ENVIRONMENT
+              value: "production"
+            - name: CLEANUP_RETENTION_DAYS
+              value: "30"
+            envFrom:
+            - configMapRef:
+                name: spacecraft-config
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "200m"
+            volumeMounts:
+            - name: results-storage
+              mountPath: /app/results
+            - name: simulation-data
+              mountPath: /app/data
+          volumes:
+          - name: results-storage
+            persistentVolumeClaim:
+              claimName: results-storage-pvc
+          - name: simulation-data
+            persistentVolumeClaim:
+              claimName: simulation-data-pvc
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: spacecraft-database
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-database
+    version: v1.0.0
+    component: database
+spec:
+  serviceName: spacecraft-database-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: spacecraft-database
+  template:
+    metadata:
+      labels:
+        app: spacecraft-database
+        version: v1.0.0
+        component: database
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+      - name: postgresql
+        image: postgres:15-alpine
+        ports:
+        - name: postgresql
+          containerPort: 5432
+          protocol: TCP
+        env:
+        - name: POSTGRES_DB
+          value: "spacecraft_sim"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: spacecraft-secrets
+              key: postgres-user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: spacecraft-secrets
+              key: postgres-password
+        - name: POSTGRES_REPLICATION_USER
+          valueFrom:
+            secretKeyRef:
+              name: spacecraft-secrets
+              key: postgres-replication-user
+        - name: POSTGRES_REPLICATION_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: spacecraft-secrets
+              key: postgres-replication-password
+        - name: PGDATA
+          value: "/var/lib/postgresql/data/pgdata"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+            storage: "20Gi"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - exec pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" -h 127.0.0.1 -p 5432
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - -e
+              - |
+                exec pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" -h 127.0.0.1 -p 5432
+                [ -f /opt/bitnami/postgresql/tmp/.initialized ] || [ -f /bitnami/postgresql/.initialized ]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 6
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        - name: config
+          mountPath: /etc/postgresql/postgresql.conf
+          subPath: postgresql.conf
+      volumes:
+      - name: config
+        configMap:
+          name: postgres-config
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: "fast-ssd"
+      resources:
+        requests:
+          storage: 50Gi

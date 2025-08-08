@@ -1,0 +1,650 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spacecraft-config
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-drmpc
+    version: v1.0.0
+    component: configuration
+data:
+  # Application Configuration
+  APP_NAME: "spacecraft-drmpc"
+  APP_VERSION: "v1.0.0"
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  
+  # Simulation Configuration
+  DEFAULT_SCENARIO: "formation_flying"
+  MAX_SIMULATION_DURATION: "7200"  # 2 hours in seconds
+  DEFAULT_TIME_STEP: "0.1"
+  REAL_TIME_FACTOR: "1.0"
+  
+  # Controller Configuration
+  DEFAULT_PREDICTION_HORIZON: "20"
+  DEFAULT_SOLVER: "MOSEK"
+  SOLVER_TIMEOUT: "10.0"
+  OPTIMIZATION_TOLERANCE: "1e-6"
+  
+  # Multi-Agent Configuration
+  MAX_AGENTS: "20"
+  COORDINATION_FREQUENCY: "10.0"  # Hz
+  CONSENSUS_TIMEOUT: "30.0"
+  COMMUNICATION_RANGE: "1000.0"  # meters
+  
+  # Performance Configuration
+  CPU_CORES: "4"
+  MEMORY_LIMIT: "8Gi"
+  PARALLEL_PROCESSING: "true"
+  BATCH_SIZE: "100"
+  
+  # Database Configuration
+  DB_POOL_SIZE: "20"
+  DB_MAX_OVERFLOW: "10"
+  DB_POOL_TIMEOUT: "30"
+  DB_POOL_RECYCLE: "3600"
+  
+  # Redis Configuration
+  REDIS_HOST: "localhost"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_TIMEOUT: "5.0"
+  
+  # Monitoring Configuration
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "8080"
+  HEALTH_CHECK_INTERVAL: "30"
+  TELEMETRY_EXPORT_INTERVAL: "60"
+  
+  # Security Configuration
+  ENABLE_AUTH: "true"
+  SESSION_TIMEOUT: "3600"
+  MAX_LOGIN_ATTEMPTS: "3"
+  
+  # File Storage Configuration
+  RESULTS_RETENTION_DAYS: "30"
+  MAX_FILE_SIZE: "100MB"
+  CLEANUP_SCHEDULE: "0 2 * * *"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spacecraft-mission-config
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-drmpc
+    version: v1.0.0
+    component: mission-configuration
+data:
+  default_mission.yaml: |
+    mission:
+      name: "Default Formation Flying Mission"
+      type: "formation_flying"
+      duration: 3600  # 1 hour
+      real_time: false
+      
+    spacecraft:
+      leader:
+        agent_id: "formation-leader"
+        initial_conditions:
+          position: [0.0, 0.0, 0.0]
+          velocity: [0.0, 0.0, 0.0]
+          attitude: [1.0, 0.0, 0.0, 0.0]
+          angular_velocity: [0.0, 0.0, 0.0]
+        physical_properties:
+          mass: 500.0
+          inertia_matrix: [[100.0, 0.0, 0.0], [0.0, 150.0, 0.0], [0.0, 0.0, 120.0]]
+        thrusters:
+          configuration: "12_thruster_config"
+          max_thrust_per_thruster: 10.0
+      
+      follower_1:
+        agent_id: "follower-001"
+        initial_conditions:
+          position: [25.0, 0.0, 0.0]
+          velocity: [0.0, 0.0, 0.0]
+          attitude: [1.0, 0.0, 0.0, 0.0]
+          angular_velocity: [0.0, 0.0, 0.0]
+        physical_properties:
+          mass: 400.0
+          inertia_matrix: [[80.0, 0.0, 0.0], [0.0, 120.0, 0.0], [0.0, 0.0, 100.0]]
+        thrusters:
+          configuration: "8_thruster_config"
+          max_thrust_per_thruster: 8.0
+      
+      follower_2:
+        agent_id: "follower-002"
+        initial_conditions:
+          position: [-25.0, 0.0, 0.0]
+          velocity: [0.0, 0.0, 0.0]
+          attitude: [1.0, 0.0, 0.0, 0.0]
+          angular_velocity: [0.0, 0.0, 0.0]
+        physical_properties:
+          mass: 400.0
+          inertia_matrix: [[80.0, 0.0, 0.0], [0.0, 120.0, 0.0], [0.0, 0.0, 100.0]]
+        thrusters:
+          configuration: "8_thruster_config"
+          max_thrust_per_thruster: 8.0
+    
+    controller:
+      type: "DR_MPC"
+      prediction_horizon: 25
+      time_step: 0.1
+      optimization:
+        solver: "MOSEK"
+        max_iterations: 1000
+        tolerance: 1e-6
+        warm_start: true
+      uncertainty:
+        wasserstein_radius: 0.1
+        confidence_level: 0.95
+        uncertainty_types: ["parametric", "environmental"]
+      constraints:
+        position_bounds: [-1000.0, 1000.0]
+        velocity_bounds: [-2.0, 2.0]
+        thrust_bounds: [0.0, 50.0]
+    
+    environment:
+      reference_frame: "LVLH"
+      orbital_parameters:
+        altitude: 408000
+        inclination: 51.6
+        eccentricity: 0.0003
+      disturbances:
+        atmospheric_drag: true
+        solar_radiation_pressure: true
+        gravitational_perturbations: true
+    
+    simulation:
+      integrator: "RK45"
+      absolute_tolerance: 1e-8
+      relative_tolerance: 1e-6
+      max_step_size: 0.1
+      logging:
+        save_trajectory: true
+        save_controls: true
+        save_performance_metrics: true
+        output_format: "HDF5"
+    
+    visualization:
+      enabled: true
+      real_time_plots: true
+      plot_types: ["trajectory", "attitude", "controls"]
+      update_frequency: 10
+
+  emergency_mission.yaml: |
+    mission:
+      name: "Emergency Abort Scenario"
+      type: "emergency_procedures"
+      duration: 300  # 5 minutes
+      real_time: true
+      
+    spacecraft:
+      chaser:
+        agent_id: "emergency-chaser"
+        initial_conditions:
+          position: [-10.0, 0.0, 0.0]
+          velocity: [0.5, 0.0, 0.0]
+          attitude: [1.0, 0.0, 0.0, 0.0]
+          angular_velocity: [0.0, 0.0, 0.0]
+        physical_properties:
+          mass: 600.0
+          inertia_matrix: [[120.0, 0.0, 0.0], [0.0, 180.0, 0.0], [0.0, 0.0, 150.0]]
+        emergency_config:
+          max_emergency_thrust: 25.0
+          abort_acceleration_limit: 2.0
+          emergency_fuel_reserve: 0.2
+      
+      target:
+        agent_id: "emergency-target"
+        initial_conditions:
+          position: [0.0, 0.0, 0.0]
+          velocity: [0.0, 0.0, 0.0]
+          attitude: [1.0, 0.0, 0.0, 0.0]
+          angular_velocity: [0.0, 0.0, 0.0]
+        physical_properties:
+          mass: 10000.0
+        emergency_config:
+          attitude_control_failure: true
+          attitude_error_rate: 1.0  # deg/s
+    
+    emergency_scenarios:
+      - type: "collision_warning"
+        trigger_time: 60.0
+        severity: "critical"
+        abort_distance: 15.0
+      - type: "thruster_failure"
+        trigger_time: 120.0
+        failed_thrusters: [2, 5]
+        remaining_capability: 0.6
+      - type: "communication_loss"
+        trigger_time: 180.0
+        duration: 60.0
+
+  performance_test.yaml: |
+    mission:
+      name: "Performance Benchmark"
+      type: "performance_test"
+      duration: 1800  # 30 minutes
+      real_time: false
+      
+    test_parameters:
+      agent_counts: [5, 10, 15, 20]
+      prediction_horizons: [10, 20, 30, 40]
+      time_steps: [0.05, 0.1, 0.2]
+      solvers: ["OSQP", "CLARABEL", "MOSEK"]
+      
+    performance_metrics:
+      - solve_time
+      - memory_usage
+      - cpu_utilization
+      - convergence_rate
+      - fuel_efficiency
+      - position_accuracy
+      
+    acceptance_criteria:
+      max_solve_time: 0.1  # seconds
+      max_memory_usage: 4.0  # GB
+      min_convergence_rate: 0.9
+      min_position_accuracy: 0.1  # meters
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-database
+    version: v1.0.0
+    component: database-config
+data:
+  postgresql.conf: |
+    # PostgreSQL Configuration for Spacecraft Simulation
+    
+    # Connection Settings
+    listen_addresses = '*'
+    port = 5432
+    max_connections = 200
+    superuser_reserved_connections = 3
+    
+    # Memory Settings
+    shared_buffers = 1GB
+    effective_cache_size = 3GB
+    work_mem = 16MB
+    maintenance_work_mem = 256MB
+    
+    # WAL Settings
+    wal_level = replica
+    max_wal_senders = 10
+    max_replication_slots = 10
+    wal_keep_segments = 64
+    archive_mode = on
+    archive_command = 'test ! -f /var/lib/postgresql/archive/%f && cp %p /var/lib/postgresql/archive/%f'
+    
+    # Checkpoint Settings
+    checkpoint_timeout = 5min
+    max_wal_size = 2GB
+    min_wal_size = 1GB
+    checkpoint_completion_target = 0.7
+    
+    # Performance Settings
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    max_worker_processes = 8
+    max_parallel_workers_per_gather = 4
+    max_parallel_workers = 8
+    max_parallel_maintenance_workers = 4
+    
+    # Logging Settings
+    log_destination = 'stderr'
+    logging_collector = on
+    log_directory = 'pg_log'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_rotation_age = 1d
+    log_rotation_size = 100MB
+    log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    log_lock_waits = on
+    log_statement = 'ddl'
+    log_duration = on
+    log_min_duration_statement = 1000
+    
+    # Replication Settings
+    hot_standby = on
+    wal_receiver_status_interval = 10s
+    hot_standby_feedback = on
+    wal_receiver_timeout = 60s
+
+  pg_hba.conf: |
+    # PostgreSQL Client Authentication Configuration
+    
+    # TYPE  DATABASE        USER            ADDRESS                 METHOD
+    
+    # "local" is for Unix domain socket connections only
+    local   all             all                                     trust
+    
+    # IPv4 local connections:
+    host    all             all             127.0.0.1/32            md5
+    host    all             all             10.0.0.0/8              md5
+    host    all             all             172.16.0.0/12           md5
+    host    all             all             192.168.0.0/16          md5
+    
+    # IPv6 local connections:
+    host    all             all             ::1/128                 md5
+    
+    # Replication connections
+    host    replication     all             10.0.0.0/8              md5
+    host    replication     all             172.16.0.0/12           md5
+    host    replication     all             192.168.0.0/16          md5
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: spacecraft-sim
+  labels:
+    app: prometheus
+    version: v1.0.0
+    component: monitoring-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'spacecraft-simulation'
+        environment: 'production'
+    
+    rule_files:
+      - "spacecraft_rules.yml"
+    
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+              - alertmanager:9093
+    
+    scrape_configs:
+      - job_name: 'spacecraft-drmpc'
+        static_configs:
+          - targets: ['spacecraft-drmpc:8080']
+        metrics_path: /metrics
+        scrape_interval: 10s
+        scrape_timeout: 5s
+        honor_labels: true
+        
+      - job_name: 'spacecraft-coordinator'
+        static_configs:
+          - targets: ['spacecraft-coordinator:8080']
+        metrics_path: /metrics
+        scrape_interval: 15s
+        
+      - job_name: 'spacecraft-database'
+        static_configs:
+          - targets: ['postgres-exporter:9187']
+        metrics_path: /metrics
+        scrape_interval: 30s
+        
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - spacecraft-sim
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+
+  spacecraft_rules.yml: |
+    groups:
+    - name: spacecraft_simulation
+      rules:
+      - alert: SpacecraftHighMemoryUsage
+        expr: spacecraft_memory_usage_bytes / spacecraft_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage detected"
+          description: "Spacecraft simulation {{ $labels.instance }} is using {{ $value | humanizePercentage }} of available memory."
+          
+      - alert: SpacecraftHighCPUUsage
+        expr: spacecraft_cpu_usage_percent > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "Spacecraft simulation {{ $labels.instance }} CPU usage is {{ $value }}%."
+          
+      - alert: SpacecraftSimulationFailed
+        expr: spacecraft_simulation_status != 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Spacecraft simulation failed"
+          description: "Simulation {{ $labels.simulation_id }} has failed on instance {{ $labels.instance }}."
+          
+      - alert: SpacecraftSolverTimeout
+        expr: spacecraft_solver_duration_seconds > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MPC solver timeout"
+          description: "MPC solver on {{ $labels.instance }} is taking {{ $value }}s to solve."
+          
+      - alert: SpacecraftCollisionRisk
+        expr: spacecraft_min_separation_meters < 5.0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Collision risk detected"
+          description: "Minimum separation between spacecraft is {{ $value }}m on simulation {{ $labels.simulation_id }}."
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: spacecraft-sim
+  labels:
+    app: grafana
+    version: v1.0.0
+    component: monitoring-dashboards
+data:
+  spacecraft-overview.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Spacecraft Simulation Overview",
+        "tags": ["spacecraft", "simulation"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Active Simulations",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "count(spacecraft_simulation_status == 1)",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 1},
+                    {"color": "green", "value": 5}
+                  ]
+                }
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Total Spacecraft",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(spacecraft_agent_count)",
+                "refId": "A"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "System Resource Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "spacecraft_cpu_usage_percent",
+                "legendFormat": "CPU Usage (%)",
+                "refId": "A"
+              },
+              {
+                "expr": "spacecraft_memory_usage_bytes / spacecraft_memory_limit_bytes * 100",
+                "legendFormat": "Memory Usage (%)",
+                "refId": "B"
+              }
+            ],
+            "yAxes": [
+              {
+                "min": 0,
+                "max": 100,
+                "unit": "percent"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "Solver Performance",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, spacecraft_solver_duration_seconds_bucket)",
+                "legendFormat": "95th percentile",
+                "refId": "A"
+              },
+              {
+                "expr": "histogram_quantile(0.50, spacecraft_solver_duration_seconds_bucket)",
+                "legendFormat": "50th percentile",
+                "refId": "B"
+              }
+            ],
+            "yAxes": [
+              {
+                "min": 0,
+                "unit": "s"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "10s"
+      }
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logging-config
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-drmpc
+    version: v1.0.0
+    component: logging-config
+data:
+  logging.yaml: |
+    version: 1
+    disable_existing_loggers: false
+    
+    formatters:
+      standard:
+        format: '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+      json:
+        format: '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s", "module": "%(module)s", "function": "%(funcName)s", "line": %(lineno)d}'
+    
+    handlers:
+      console:
+        class: logging.StreamHandler
+        level: INFO
+        formatter: json
+        stream: ext://sys.stdout
+      
+      file:
+        class: logging.handlers.RotatingFileHandler
+        level: INFO
+        formatter: standard
+        filename: /app/logs/spacecraft.log
+        maxBytes: 104857600  # 100MB
+        backupCount: 5
+      
+      error_file:
+        class: logging.handlers.RotatingFileHandler
+        level: ERROR
+        formatter: json
+        filename: /app/logs/spacecraft_error.log
+        maxBytes: 104857600  # 100MB
+        backupCount: 10
+    
+    loggers:
+      src.controllers:
+        level: INFO
+        handlers: [console, file]
+        propagate: false
+      
+      src.agents:
+        level: INFO
+        handlers: [console, file]
+        propagate: false
+      
+      src.coordination:
+        level: DEBUG
+        handlers: [console, file]
+        propagate: false
+      
+      src.fault_tolerance:
+        level: WARNING
+        handlers: [console, file, error_file]
+        propagate: false
+    
+    root:
+      level: INFO
+      handlers: [console, file]

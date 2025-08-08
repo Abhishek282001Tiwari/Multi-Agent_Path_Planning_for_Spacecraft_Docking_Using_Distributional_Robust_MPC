@@ -1,0 +1,267 @@
+# Multi-stage Dockerfile for Production Spacecraft Simulation
+# Base image with Python and system dependencies
+
+# Stage 1: Base System Setup
+FROM ubuntu:22.04 as base
+LABEL maintainer="Spacecraft Simulation Team <team@spacecraft-sim.example.com>"
+LABEL version="1.0.0"
+LABEL description="Multi-Agent Spacecraft Docking Simulation with Distributionally Robust MPC"
+
+# Set build arguments
+ARG BUILD_VERSION=v1.0.0
+ARG BUILD_COMMIT=unknown
+ARG BUILD_DATE
+ARG PYTHON_VERSION=3.11
+ARG NODE_VERSION=18
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Core system packages
+    ca-certificates \
+    curl \
+    wget \
+    gnupg2 \
+    lsb-release \
+    apt-transport-https \
+    software-properties-common \
+    # Build tools
+    build-essential \
+    gcc \
+    g++ \
+    make \
+    cmake \
+    pkg-config \
+    # Python dependencies
+    python3.11 \
+    python3.11-dev \
+    python3.11-venv \
+    python3-pip \
+    # Mathematical libraries
+    libatlas-base-dev \
+    libblas-dev \
+    liblapack-dev \
+    libsuitesparse-dev \
+    # Optimization libraries
+    libglpk-dev \
+    coinor-libcbc-dev \
+    coinor-libclp-dev \
+    # Graphics and visualization
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    # Networking and communication
+    libssl-dev \
+    libffi-dev \
+    # Database client libraries
+    libpq-dev \
+    # Security and monitoring
+    supervisor \
+    cron \
+    # Utilities
+    git \
+    unzip \
+    htop \
+    nano \
+    jq \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create symlink for python3.11 to python
+RUN ln -s /usr/bin/python3.11 /usr/bin/python
+
+# Install Node.js for frontend build tools
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g npm@latest
+
+# Create application user and directories
+RUN groupadd -r spacecraft --gid=1000 \
+    && useradd -r -g spacecraft --uid=1000 --home-dir=/app --shell=/bin/bash spacecraft \
+    && mkdir -p /app /app/logs /app/data /app/results /app/config /app/tmp \
+    && chown -R spacecraft:spacecraft /app
+
+# Stage 2: Python Dependencies Installation
+FROM base as python-deps
+
+# Upgrade pip and install Python package managers
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# Copy requirements files
+COPY requirements/requirements.txt requirements/requirements-prod.txt /tmp/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r /tmp/requirements.txt \
+    && pip install --no-cache-dir -r /tmp/requirements-prod.txt \
+    && rm -rf /tmp/requirements*.txt
+
+# Install MOSEK optimization solver
+ARG MOSEK_VERSION=10.1.25
+RUN wget -q https://download.mosek.com/stable/${MOSEK_VERSION}/mosektoolslinux64x86.tar.bz2 \
+    && tar -xjf mosektoolslinux64x86.tar.bz2 \
+    && cd mosek/${MOSEK_VERSION}/tools/platform/linux64x86/python/3/ \
+    && pip install --no-cache-dir . \
+    && cd / \
+    && rm -rf mosek* \
+    && mkdir -p /opt/mosek/licenses
+
+# Install additional optimization solvers
+RUN pip install --no-cache-dir \
+    osqp \
+    clarabel \
+    cvxpy \
+    casadi
+
+# Stage 3: Application Build
+FROM python-deps as build
+
+# Set working directory
+WORKDIR /app
+
+# Copy source code
+COPY --chown=spacecraft:spacecraft . .
+
+# Install application in development mode for building
+RUN pip install -e .
+
+# Build frontend assets (if any)
+RUN if [ -f "package.json" ]; then \
+        npm ci --only=production \
+        && npm run build \
+        && rm -rf node_modules; \
+    fi
+
+# Compile Python files
+RUN python -m compileall -b -q . || true
+
+# Stage 4: Production Image
+FROM base as production
+
+# Copy Python environment from dependencies stage
+COPY --from=python-deps /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
+COPY --from=python-deps /usr/local/bin/ /usr/local/bin/
+COPY --from=python-deps /opt/mosek/ /opt/mosek/
+
+# Copy application from build stage
+COPY --from=build --chown=spacecraft:spacecraft /app /app
+
+# Set working directory
+WORKDIR /app
+
+# Create additional directories
+RUN mkdir -p \
+    /app/logs \
+    /app/data \
+    /app/results \
+    /app/tmp \
+    /var/log/spacecraft \
+    && chown -R spacecraft:spacecraft /app /var/log/spacecraft
+
+# Copy production configuration files
+COPY --chown=spacecraft:spacecraft docker/config/production/ /app/config/
+COPY --chown=spacecraft:spacecraft docker/supervisor/spacecraft.conf /etc/supervisor/conf.d/
+COPY --chown=spacecraft:spacecraft docker/cron/spacecraft-cron /etc/cron.d/
+
+# Set permissions for cron
+RUN chmod 0644 /etc/cron.d/spacecraft-cron \
+    && crontab -u spacecraft /etc/cron.d/spacecraft-cron
+
+# Health check script
+COPY --chown=spacecraft:spacecraft docker/healthcheck/healthcheck.py /app/healthcheck.py
+RUN chmod +x /app/healthcheck.py
+
+# Create startup script
+COPY --chown=spacecraft:spacecraft docker/entrypoint/production-entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# Expose ports
+EXPOSE 8080 9090 8081
+
+# Set build metadata
+LABEL build.version="${BUILD_VERSION}"
+LABEL build.commit="${BUILD_COMMIT}"
+LABEL build.date="${BUILD_DATE}"
+
+# Environment variables for runtime
+ENV APP_ENV=production
+ENV PYTHONPATH=/app
+ENV PATH="/app:/usr/local/bin:$PATH"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+    CMD python /app/healthcheck.py || exit 1
+
+# Switch to non-root user
+USER spacecraft
+
+# Set entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["spacecraft-app"]
+
+# Stage 5: Migration Image
+FROM production as migration
+
+# Copy migration scripts
+COPY --chown=spacecraft:spacecraft migrations/ /app/migrations/
+COPY --chown=spacecraft:spacecraft docker/migration/migrate.py /app/migrate.py
+
+# Make migration script executable
+RUN chmod +x /app/migrate.py
+
+# Override entrypoint for migration
+ENTRYPOINT ["python", "/app/migrate.py"]
+
+# Stage 6: Development Image (for testing)
+FROM build as development
+
+# Install development dependencies
+COPY requirements/requirements-dev.txt /tmp/
+RUN pip install --no-cache-dir -r /tmp/requirements-dev.txt
+
+# Install debugging and testing tools
+RUN pip install --no-cache-dir \
+    pytest \
+    pytest-cov \
+    pytest-mock \
+    black \
+    flake8 \
+    mypy \
+    jupyter \
+    ipdb
+
+# Copy development configuration
+COPY --chown=spacecraft:spacecraft docker/config/development/ /app/config/
+
+# Development environment variables
+ENV APP_ENV=development
+ENV LOG_LEVEL=DEBUG
+
+# Expose additional ports for debugging
+EXPOSE 8080 9090 8081 5678
+
+# Development command
+CMD ["python", "-m", "src.main"]
+
+# Stage 7: Test Runner Image
+FROM development as test
+
+# Copy test files
+COPY --chown=spacecraft:spacecraft tests/ /app/tests/
+COPY --chown=spacecraft:spacecraft pytest.ini /app/
+COPY --chown=spacecraft:spacecraft .coverage* /app/
+
+# Set test environment
+ENV APP_ENV=test
+ENV PYTEST_CURRENT_TEST=""
+
+# Test command
+CMD ["python", "-m", "pytest", "-v", "--cov=src", "--cov-report=html", "--cov-report=term"]

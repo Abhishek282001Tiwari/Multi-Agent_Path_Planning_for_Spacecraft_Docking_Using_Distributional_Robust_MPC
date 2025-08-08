@@ -1,0 +1,319 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: spacecraft-drmpc
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-drmpc
+    version: v1.0.0
+    component: simulation
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: http
+    protocol: TCP
+  - name: grpc
+    port: 9090
+    targetPort: grpc
+    protocol: TCP
+  - name: metrics
+    port: 8080
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: spacecraft-drmpc
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours for long-running simulations
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spacecraft-drmpc-internal
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-drmpc
+    version: v1.0.0
+    component: simulation
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+    protocol: TCP
+  - name: grpc
+    port: 9090
+    targetPort: grpc
+    protocol: TCP
+  selector:
+    app: spacecraft-drmpc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spacecraft-coordinator
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-coordinator
+    version: v1.0.0
+    component: coordination
+spec:
+  type: ClusterIP
+  ports:
+  - name: coordinator
+    port: 8081
+    targetPort: coordinator
+    protocol: TCP
+  - name: metrics
+    port: 8080
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: spacecraft-coordinator
+  clusterIP: None  # Headless service for leader election
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spacecraft-database
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-database
+    version: v1.0.0
+    component: database
+spec:
+  type: ClusterIP
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: postgresql
+    protocol: TCP
+  selector:
+    app: spacecraft-database
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spacecraft-database-headless
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-database
+    version: v1.0.0
+    component: database
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: postgresql
+    protocol: TCP
+  selector:
+    app: spacecraft-database
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spacecraft-database-read
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-database
+    version: v1.0.0
+    component: database
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "false"
+spec:
+  type: ClusterIP
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: postgresql
+    protocol: TCP
+  selector:
+    app: spacecraft-database
+    role: replica
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spacecraft-network-policy
+  namespace: spacecraft-sim
+spec:
+  podSelector:
+    matchLabels:
+      app: spacecraft-drmpc
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: spacecraft-coordinator
+    - podSelector:
+        matchLabels:
+          component: monitoring
+    - namespaceSelector:
+        matchLabels:
+          name: spacecraft-monitoring
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 9090
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: spacecraft-database
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: spacecraft-coordinator
+    ports:
+    - protocol: TCP
+      port: 8081
+  - to: []  # Allow all outbound for external APIs
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spacecraft-database-policy
+  namespace: spacecraft-sim
+spec:
+  podSelector:
+    matchLabels:
+      app: spacecraft-database
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: spacecraft-drmpc
+    - podSelector:
+        matchLabels:
+          app: spacecraft-coordinator
+    - podSelector:
+        matchLabels:
+          app: spacecraft-migration
+    - podSelector:
+        matchLabels:
+          component: monitoring
+    ports:
+    - protocol: TCP
+      port: 5432
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: spacecraft-database
+    ports:
+    - protocol: TCP
+      port: 5432  # For replication
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spacecraft-metrics
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-metrics
+    version: v1.0.0
+    component: monitoring
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    component: simulation
+  clusterIP: None
+
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: spacecraft-drmpc-endpoints
+  namespace: spacecraft-sim
+  labels:
+    kubernetes.io/service-name: spacecraft-drmpc
+addressType: IPv4
+ports:
+- name: http
+  appProtocol: http
+  protocol: TCP
+  port: 8080
+- name: grpc
+  appProtocol: grpc
+  protocol: TCP
+  port: 9090
+endpoints: []  # Populated automatically by controller
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spacecraft-redis
+  namespace: spacecraft-sim
+  labels:
+    app: spacecraft-redis
+    version: v1.0.0
+    component: cache
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: redis
+    protocol: TCP
+  selector:
+    app: spacecraft-drmpc  # Redis runs as sidecar

@@ -1,0 +1,23 @@
+version: '3.8'
+services:
+  spacecraft-sim:
+    build: .
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      - ./results:/app/results
+      - ./logs:/app/logs
+    environment:
+      - PYTHONPATH=/app
+      - MOSEKLM_LICENSE_FILE=/app/mosek.lic
+    command: ["python", "main.py", "--scenario", "three_spacecraft", "--duration", "300"]
+  
+  visualization:
+    image: nginx:alpine
+    ports:
+      - "3000:80"
+    volumes:
+      - ./docs/website:/usr/share/nginx/html
+    depends_on:
+      - spacecraft-sim
