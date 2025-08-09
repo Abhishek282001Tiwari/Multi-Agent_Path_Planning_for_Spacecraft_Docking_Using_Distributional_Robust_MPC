@@ -1,24 +1,65 @@
-.PHONY: install test clean docs docker format lint help
+.PHONY: help install dev-install test test-all lint format security clean build docs serve demo benchmark validate
 
 # Colors for output
+RED := \033[0;31m
+GREEN := \033[0;32m
 YELLOW := \033[1;33m
-GREEN := \033[1;32m
-BLUE := \033[1;34m
-RED := \033[1;31m
+BLUE := \033[0;34m
 NC := \033[0m # No Color
 
+# Python and pip executables
+PYTHON := python3
+PIP := pip
+PYTEST := pytest
+
+# Project configuration
+PROJECT_NAME := spacecraft-drmpc
+SRC_DIR := src
+TEST_DIR := tests
+DOCS_DIR := docs
+
+# Default target
 help: ## Show this help message
-	@echo "$(BLUE)Spacecraft DRMPC - Available Commands:$(NC)"
+	@echo "$(BLUE)Multi-Agent Spacecraft Docking System - Development Commands$(NC)"
+	@echo "=============================================================="
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}'
+	@echo "$(YELLOW)Quick Start:$(NC)"
+	@echo "  $(GREEN)make install$(NC)     Install for end users"
+	@echo "  $(GREEN)make dev$(NC)         Complete development setup"
+	@echo "  $(GREEN)make demo$(NC)        Run quick demonstration"
+	@echo ""
+	@echo "$(YELLOW)Development:$(NC)"
+	@echo "  $(GREEN)make test$(NC)        Run unit tests"
+	@echo "  $(GREEN)make test-all$(NC)    Run all tests with coverage"
+	@echo "  $(GREEN)make lint$(NC)        Check code quality"
+	@echo "  $(GREEN)make format$(NC)      Format code"
+	@echo "  $(GREEN)make security$(NC)    Security analysis"
+	@echo ""
+	@echo "$(YELLOW)Documentation:$(NC)"
+	@echo "  $(GREEN)make docs$(NC)        Build documentation"
+	@echo "  $(GREEN)make serve$(NC)       Serve docs locally"
+	@echo ""
+	@echo "$(YELLOW)Validation:$(NC)"
+	@echo "  $(GREEN)make validate$(NC)    Full system validation"
+	@echo "  $(GREEN)make benchmark$(NC)   Performance benchmarks"
+	@echo ""
 
-install: ## Install the package and dependencies
-	@echo "$(YELLOW)Installing spacecraft-drmpc package...$(NC)"
-	pip install -e .
-	pip install -e ".[dev]"
-	@echo "$(GREEN)Installation completed!$(NC)"
+# Installation targets
+install: ## Install package and dependencies for end users
+	@echo "$(BLUE)Installing Spacecraft Docking System...$(NC)"
+	$(PIP) install --upgrade pip
+	$(PIP) install -r requirements.txt
+	$(PIP) install -e .
+	@echo "$(GREEN)✅ Installation complete!$(NC)"
 
-install-deps: ## Install only dependencies
+dev-install: ## Install development dependencies and setup
+	@echo "$(BLUE)Setting up development environment...$(NC)"
+	$(PIP) install --upgrade pip
+	$(PIP) install -r requirements.txt
+	$(PIP) install -e .
+	@echo "$(GREEN)✅ Development environment ready!$(NC)"
+
+install-deps: ## Install only dependencies  
 	@echo "$(YELLOW)Installing dependencies...$(NC)"
 	pip install -r requirements.txt
 	@echo "$(GREEN)Dependencies installed!$(NC)"
@@ -129,3 +170,51 @@ quick-test: ## Run quick smoke tests
 
 quick-sim: ## Run quick simulation test
 	python -c "from spacecraft_drmpc.simulations.simulator import SpacecraftSimulator; sim = SpacecraftSimulator('single_docking'); print('Simulation initialized successfully!')"
+
+# Demo and validation targets
+demo: ## Run quick demonstration
+	@echo "$(BLUE)🚀 Running Spacecraft Docking Demo...$(NC)"
+	$(PYTHON) scripts/quick_test.py
+	@echo "$(GREEN)✅ Demo complete! Check results in docs/_data/$(NC)"
+
+benchmark: ## Run performance benchmarks  
+	@echo "$(BLUE)Running comprehensive benchmarks...$(NC)"
+	@mkdir -p reports
+	$(PYTHON) scripts/generate_results.py
+	$(PYTHON) scripts/generate_plots.py
+	@echo "$(GREEN)✅ Benchmarks complete! Results in docs/_data/results/$(NC)"
+
+validate: ## Run full system validation
+	@echo "$(BLUE)Running full system validation...$(NC)"
+	@echo "$(YELLOW)→ Quick validation...$(NC)"
+	$(PYTHON) scripts/quick_test.py
+	@echo "$(YELLOW)→ Running tests...$(NC)"
+	make test
+	@echo "$(GREEN)✅ System validation complete!$(NC)"
+
+validate-quick: ## Run quick validation (30 seconds)
+	@echo "$(BLUE)Running quick system validation...$(NC)"
+	$(PYTHON) scripts/quick_test.py
+	@echo "$(GREEN)✅ Quick validation passed!$(NC)"
+
+serve: ## Serve documentation locally
+	@echo "$(BLUE)Starting documentation server...$(NC)"
+	$(PYTHON) scripts/jekyll_integration.py
+	@if command -v bundle >/dev/null 2>&1; then \
+		cd $(DOCS_DIR) && bundle install && bundle exec jekyll serve --host 0.0.0.0 --port 4000; \
+	else \
+		echo "$(YELLOW)⚠️  Jekyll not installed. Install with: gem install bundler jekyll$(NC)"; \
+	fi
+
+# Development workflow shortcuts
+dev: dev-install validate-quick ## Full development setup and validation
+
+quick: validate-quick serve ## Quick validation and serve docs
+
+# Special targets for first-time users
+first-run: ## Complete first-time setup and demo
+	@echo "$(BLUE)🚀 Welcome to Spacecraft Docking System!$(NC)"
+	@echo "$(YELLOW)Setting up for first-time use...$(NC)"
+	make install
+	make demo
+	@echo "$(GREEN)🎉 Setup complete! Try 'make help' for more commands.$(NC)"
