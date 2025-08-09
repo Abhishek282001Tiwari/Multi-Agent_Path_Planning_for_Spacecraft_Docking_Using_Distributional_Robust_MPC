@@ -1,7 +1,7 @@
 title: Multi-Agent Spacecraft Docking System
 description: Distributionally Robust Model Predictive Control for Autonomous Spacecraft Operations
-baseurl: "/spacecraft-docking-drmpc"
-url: "https://yourusername.github.io"
+url: "https://your-username.github.io"
+baseurl: "/Multi-Agent_Path_Planning_for_Spacecraft_Docking_Using_Distributional_Robust_MPC"
 
 markdown: kramdown
 highlighter: rouge
